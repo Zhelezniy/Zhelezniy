@@ -1,0 +1,109 @@
+import time
+import hmac
+import hashlib
+import requests
+import json
+
+# Налаштування API ключів
+API_KEY = "your_api_key"
+API_SECRET = "your_api_secret"
+BASE_URL = "https://whitebit.com/api/v4"
+
+# Створення підпису для авторизації
+def create_signature(data):
+    encoded_data = json.dumps(data, separators=(',', ':'))
+    return hmac.new(
+        API_SECRET.encode('utf-8'),
+        encoded_data.encode('utf-8'),
+        hashlib.sha512
+    ).hexdigest()
+
+# Функція для виконання запитів до WhiteBIT
+def send_request(endpoint, method="GET", data=None):
+    headers = {"Content-Type": "application/json", "X-TXC-APIKEY": API_KEY}
+    if data:
+        signature = create_signature(data)
+        headers["X-TXC-SIGNATURE"] = signature
+
+    url = f"{BASE_URL}{endpoint}"
+    if method == "POST":
+        response = requests.post(url, headers=headers, json=data)
+    else:
+        response = requests.get(url, headers=headers)
+    
+    return response.json()
+
+# Функція для отримання поточного балансу
+def get_balance():
+    endpoint = "/trade-account/balance"
+    response = send_request(endpoint, method="POST")
+    if "result" in response:
+        for asset, details in response['result'].items():
+            if float(details['available']) > 0:
+                print(f"Asset: {asset}, Available: {details['available']}")
+    else:
+        print("Error fetching balance:", response)
+
+# Функція для отримання поточної ціни
+def get_price(symbol):
+    endpoint = f"/market/ticker?market={symbol}"
+    response = send_request(endpoint)
+    if "result" in response:
+        return float(response["result"]["last"])
+    else:
+        print("Error fetching price:", response)
+        return None
+
+# Функція для купівлі криптовалюти
+def buy_crypto(symbol, amount):
+    endpoint = "/trade/order"
+    data = {
+        "market": symbol,
+        "side": "buy",
+        "amount": str(amount),
+        "type": "market"
+    }
+    response = send_request(endpoint, method="POST", data=data)
+    print("Buy order response:", response)
+
+# Функція для продажу криптовалюти
+def sell_crypto(symbol, amount):
+    endpoint = "/trade/order"
+    data = {
+        "market": symbol,
+        "side": "sell",
+        "amount": str(amount),
+        "type": "market"
+    }
+    response = send_request(endpoint, method="POST", data=data)
+    print("Sell order response:", response)
+
+# Основна логіка бота
+def trade():
+    symbol = "BTC_USDT"  # Пара криптовалют
+    buy_price = 20000  # Ціна покупки
+    sell_price = 25000  # Ціна продажу
+    trade_amount = 0.001  # Кількість криптовалюти для торгівлі
+
+    while True:
+        try:
+            price = get_price(symbol)
+            if not price:
+                time.sleep(60)
+                continue
+
+            print(f"Current price: {price}")
+            if price < buy_price:
+                print(f"Buying {symbol} at {price}")
+                buy_crypto(symbol, trade_amount)
+            elif price > sell_price:
+                print(f"Selling {symbol} at {price}")
+                sell_crypto(symbol, trade_amount)
+
+            time.sleep(60)  # Затримка між перевірками
+        except Exception as e:
+            print(f"Error in trade loop: {e}")
+            time.sleep(60)
+
+if __name__ == "__main__":
+    trade()
